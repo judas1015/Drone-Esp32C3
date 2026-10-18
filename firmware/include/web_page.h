@@ -236,6 +236,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <div class="modal-content">
       <h3>Kiểm tra thứ tự & chiều quay động cơ</h3>
       <p style="font-size:12px; color:var(--warning); margin-bottom:12px;">CẢNH BÁO: Tháo toàn bộ cánh quạt trước khi thử nghiệm!</p>
+      <div class="form-group" style="margin-bottom:15px; background:#0d1117; padding:10px; border-radius:8px; border:1px solid var(--border);">
+        <label style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span>Công suất test PWM:</span>
+          <strong id="testPwmVal" style="color:var(--accent);">280 / 1023 (~27%)</strong>
+        </label>
+        <input type="range" id="testPwmSlider" min="150" max="420" step="10" value="280" 
+               oninput="document.getElementById('testPwmVal').innerText = this.value + ' / 1023 (~' + Math.round(this.value/10.23) + '%)'" 
+               style="width:100%; accent-color:var(--accent); cursor:pointer;">
+      </div>
       <div style="display:flex; flex-direction:column; gap:8px;">
         <button class="btn btn-secondary" onclick="testMotor(1)">Quay thử Motor 1 (Front-Left, GPIO 5)</button>
         <button class="btn btn-secondary" onclick="testMotor(2)">Quay thử Motor 2 (Front-Right, GPIO 4)</button>
@@ -435,7 +444,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     function openPidModal() { document.getElementById("pidModal").style.display = "flex"; }
     function closePidModal() { document.getElementById("pidModal").style.display = "none"; }
     function openMotorTestModal() { document.getElementById("motorTestModal").style.display = "flex"; }
-    function closeMotorTestModal() { document.getElementById("motorTestModal").style.display = "none"; }
+    function closeMotorTestModal() { 
+      stopAllMotorsTest();
+      document.getElementById("motorTestModal").style.display = "none"; 
+    }
 
     function savePidSettings() {
       ws.send(JSON.stringify({
@@ -456,7 +468,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     function testMotor(idx) {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ cmd: "test_motor", idx: idx, pwm: 120 }));
+        const slider = document.getElementById("testPwmSlider");
+        const pwmVal = slider ? parseInt(slider.value) : 280;
+        ws.send(JSON.stringify({ cmd: "test_motor", idx: idx, pwm: pwmVal }));
       }
     }
     function stopAllMotorsTest() {

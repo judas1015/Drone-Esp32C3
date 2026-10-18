@@ -3,7 +3,8 @@
 
 MotorManager motors;
 
-MotorManager::MotorManager() : armed(false) {}
+MotorManager::MotorManager() 
+    : armed(false), testing(false), testIndex(0), testPwm(0), testEndTime(0) {}
 
 void MotorManager::begin() {
     // Luôn đảm bảo kéo chân xuống LOW trước khi khởi tạo PWM
@@ -53,12 +54,17 @@ void MotorManager::writeChannel(uint8_t channel, uint8_t pin, uint16_t value) {
 
 void MotorManager::setArmed(bool armState) {
     armed = armState;
-    if (!armed) {
+    if (armed) {
+        testing = false;
+    } else {
         stopAll();
     }
 }
 
 void MotorManager::stopAll() {
+    testing = false;
+    testIndex = 0;
+    testPwm = 0;
     writeChannel(PWM_CHANNEL_M1, PIN_MOTOR_1, 0);
     writeChannel(PWM_CHANNEL_M2, PIN_MOTOR_2, 0);
     writeChannel(PWM_CHANNEL_M3, PIN_MOTOR_3, 0);
@@ -83,16 +89,52 @@ void MotorManager::writeOutputs(int16_t m1, int16_t m2, int16_t m3, int16_t m4) 
     writeChannel(PWM_CHANNEL_M4, PIN_MOTOR_4, pwmM4);
 }
 
-void MotorManager::testSingleMotor(uint8_t motorIndex, uint16_t pwmValue) {
-    // Chỉ cho phép chạy test ở mức PWM an toàn (< 250 tương đương ~24% công suất)
-    if (pwmValue > 250) pwmValue = 250;
-    stopAll();
+void MotorManager::testSingleMotor(uint8_t motorIndex, uint16_t pwmValue, uint32_t durationMs) {
+    if (armed) return; // An toan: khong cho phep test khi dang ARM
+
+    if (motorIndex == 0 || pwmValue == 0) {
+        stopAll();
+        return;
+    }
+
+    // Cho phép chạy test ở mức PWM an toàn (< 450 tương đương ~44% công suất)
+    if (pwmValue > 450) pwmValue = 450;
+
+    // Tắt các động cơ khác
+    writeChannel(PWM_CHANNEL_M1, PIN_MOTOR_1, 0);
+    writeChannel(PWM_CHANNEL_M2, PIN_MOTOR_2, 0);
+    writeChannel(PWM_CHANNEL_M3, PIN_MOTOR_3, 0);
+    writeChannel(PWM_CHANNEL_M4, PIN_MOTOR_4, 0);
+
+    testIndex = motorIndex;
+    testPwm = pwmValue;
+    testEndTime = millis() + durationMs;
+    testing = true;
 
     switch (motorIndex) {
         case 1: writeChannel(PWM_CHANNEL_M1, PIN_MOTOR_1, pwmValue); break;
         case 2: writeChannel(PWM_CHANNEL_M2, PIN_MOTOR_2, pwmValue); break;
         case 3: writeChannel(PWM_CHANNEL_M3, PIN_MOTOR_3, pwmValue); break;
         case 4: writeChannel(PWM_CHANNEL_M4, PIN_MOTOR_4, pwmValue); break;
-        default: break;
+        default: testing = false; break;
+    }
+}
+
+void MotorManager::updateTest() {
+    if (!testing) return;
+
+    if (millis() >= testEndTime) {
+        stopAll();
+        Serial.println("[TEST] Het thoi gian chay thu -> Da ngat dong co an toan.");
+        return;
+    }
+
+    // Duy trì xung PWM ổn định cho động cơ đang test
+    switch (testIndex) {
+        case 1: writeChannel(PWM_CHANNEL_M1, PIN_MOTOR_1, testPwm); break;
+        case 2: writeChannel(PWM_CHANNEL_M2, PIN_MOTOR_2, testPwm); break;
+        case 3: writeChannel(PWM_CHANNEL_M3, PIN_MOTOR_3, testPwm); break;
+        case 4: writeChannel(PWM_CHANNEL_M4, PIN_MOTOR_4, testPwm); break;
+        default: stopAll(); break;
     }
 }

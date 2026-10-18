@@ -30,6 +30,8 @@ uint32_t lastRateCheckTime = 0;
 
 int16_t currentM1 = 0, currentM2 = 0, currentM3 = 0, currentM4 = 0;
 
+bool imuConnected = false;
+
 void handleRoot() {
     server.send_P(200, "text/html", INDEX_HTML);
 }
@@ -154,8 +156,9 @@ void setup() {
 
     // 2. KHỞI TẠO CẢM BIẾN IMU MPU-6050
     Serial.print("[IMU] Dang khoi tao MPU-6050 tren SDA=6, SCL=7... ");
-    if (!imu.begin()) {
-        Serial.println("THAT BAI! Kiem tra cap noi I2C tai header J3!");
+    imuConnected = imu.begin();
+    if (!imuConnected) {
+        Serial.println("THAT BAI! Kiem tra cap noi I2C tai header J3! (Drone se chay che do an toan)");
     } else {
         Serial.println("THANH CONG!");
         imu.calibrate(600);
@@ -168,6 +171,8 @@ void setup() {
     IPAddress subnet(255, 255, 255, 0);
     WiFi.softAPConfig(local_ip, gateway, subnet);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL);
+    WiFi.setSleep(false);                 // Tắt sleep sau khi AP đã bật để duy trì kết nối
+    WiFi.setTxPower(WIFI_POWER_15dBm);    // Giảm nhẹ công suất phát (15dBm) để chống sụt áp nguồn (Brownout)
 
     Serial.printf("[WIFI] Access Point da phat: %s (Pass: %s)\n", WIFI_AP_SSID, WIFI_AP_PASS);
     Serial.printf("[WIFI] Dia chi IP truy cap Web: http://%s\n", local_ip.toString().c_str());
@@ -193,8 +198,10 @@ void loop() {
         float dt = (float)(currentMicros - lastLoopTime) * 0.000001f;
         lastLoopTime = currentMicros;
 
-        // 1. Cập nhật góc đo từ IMU
-        imu.update(dt);
+        // 1. Cập nhật góc đo từ IMU (nếu cảm biến sẵn sàng)
+        if (imuConnected) {
+            imu.update(dt);
+        }
         const ImuData& imuData = imu.getData();
 
         // 2. Kiểm tra an toàn Failsafe
@@ -219,6 +226,9 @@ void loop() {
             pid.compute(cmdRoll, cmdPitch, cmdYaw, cmdThrottle, imuData, dt,
                         currentM1, currentM2, currentM3, currentM4);
             motors.writeOutputs(currentM1, currentM2, currentM3, currentM4);
+        } else if (motors.isTesting()) {
+            // Đang trong chế độ kiểm tra quay thử động cơ độc lập (Stage 3)
+            motors.updateTest();
         } else {
             currentM1 = currentM2 = currentM3 = currentM4 = 0;
             motors.stopAll();
